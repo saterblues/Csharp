@@ -38,9 +38,9 @@ namespace Csharp.Liqing.Net
         private SocketAsyncEventArgs _sendArgs = null;
         private WaitingForSendPackage _waitingForSendPackage = new WaitingForSendPackage();
         private SocketError _lastError = SocketError.SocketError;
-        public Action<TcpSessionBase, byte[], int, int> OnReceive = (a,b,c,d) => { };
-        public Action<TcpSessionBase, int> OnSend = (a,b) => { };
-        public Action<TcpSessionBase, SocketAsyncEventArgs, SocketAsyncEventArgs> OnClose = (a, b, c) => { };
+        public Action<TcpSessionBase, byte[], int, int> OnReceive = (session,buffer,offset,length) => { };
+        public Action<TcpSessionBase, int> OnSend = (session, length) => { };
+        public Action<TcpSessionBase, SocketAsyncEventArgs, SocketAsyncEventArgs> OnClose = (session, receiveArgs, sendArgs) => { };
 
         public TcpSessionBase(Socket socket, SocketAsyncEventArgs receive, SocketAsyncEventArgs send)
         {
@@ -74,6 +74,7 @@ namespace Csharp.Liqing.Net
         }
 
         private void BeginReceive() {
+            if (_socket == null || _receiveArgs == null) { return; }
             if (false == _socket.ReceiveAsync(_receiveArgs))
             {
                 ReceiveComplete();
@@ -81,6 +82,7 @@ namespace Csharp.Liqing.Net
         }
 
         private void BeginSend() {
+            if (_socket == null || _socket == null) { return; }
             if (false == _socket.SendAsync(_sendArgs)) {
                 SendComplete();
             }
@@ -166,12 +168,15 @@ namespace Csharp.Liqing.Net
             OnClose(this, _receiveArgs, _sendArgs);
 
             _waitingForSendPackage.CleanUp();
+            _receiveArgs.Completed -= SocketAsyncComplete;
             _receiveArgs = null;
+            _sendArgs.Completed -= SocketAsyncComplete;
             _sendArgs = null;
         }
 
         public void SendAsync(byte[] buffer,int offset,int length)
         {
+            if (_sendArgs == null) { return; }
             int len = SendDataSplit(buffer, offset, length);
             Array.Copy(buffer, offset, _sendArgs.Buffer, 0, len);
             try

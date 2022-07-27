@@ -13,15 +13,15 @@ namespace Csharp.Liqing.Net
 
     public class TcpServerBase
     {
-        private Socket _acceptSocket = null;
-        private int _backlog = 1000;
-        private int _bufferSize = 1024;
-        private bool _isRun = false;
+        protected Socket _acceptSocket = null;
+        protected int _backlog = 1000;
+        protected int _bufferSize = 1024;
+        protected bool _isRun = false;
 
-        private HashSet<TcpSessionBase> _sessions;
-        private Dictionary<Guid, TcpSessionBase> _sessionIds;
-        private Pool<SocketAsyncEventArgs> _acceptPool;
-        private Pool<SocketAsyncEventArgs> _readWritePool;
+        protected HashSet<TcpSessionBase> _sessions;
+        protected Dictionary<Guid, TcpSessionBase> _sessionIds;
+        protected Pool<SocketAsyncEventArgs> _acceptPool;
+        protected Pool<SocketAsyncEventArgs> _readWritePool;
 
         public TcpServerBase() {
             _acceptSocket = null;
@@ -34,33 +34,35 @@ namespace Csharp.Liqing.Net
             _acceptPool = new Pool<SocketAsyncEventArgs>();
             _readWritePool = new Pool<SocketAsyncEventArgs>();
         }
-        
-        public Action<Guid> OnConnected = (a) => {
-            Console.WriteLine("{0} connected",a);
+      
+        public bool OptionKeepAlive { get; set; }
+        public bool OptionNoDelay { get; set; }
+
+        public Action<Guid> OnConnected = (sessionGuid) => {
+            Console.WriteLine("{0} connected", sessionGuid);
         };
 
-        public Action<Guid> OnClose = (a) => {
-            Console.WriteLine("{0} close", a);
+        public Action<Guid> OnClose = (sessionGuid) =>
+        {
+            Console.WriteLine("{0} close", sessionGuid);
         };
 
-        public Action<Guid, int> OnSend = (a,b) => {
-            Console.WriteLine("{0} send:{1} bytes",a,b);
+        public Action<Guid, int> OnSend = (sessionGuid, length) =>
+        {
+            Console.WriteLine("{0} send:{1} bytes", sessionGuid, length);
         };
 
-        public Action<Guid, byte[], int, int> OnReceive = (a, b, c, d) => {
-            string str = System.Text.Encoding.UTF8.GetString(b, c, d);
-            Console.WriteLine("{0} receive:{1}", a, str);
+        public Action<Guid, byte[], int, int> OnReceive = (sessionGuid, buffer, offset, length) =>
+        {
+            string str = System.Text.Encoding.UTF8.GetString(buffer, offset, length);
+            Console.WriteLine("{0} receive:{1}", sessionGuid, str);
         };
-
-        #region Geter
+      
         public int GetBacklog() { return _backlog; }
         public int GetBufferSize() { return _bufferSize; } 
-        #endregion
 
-        #region Seter
         public void SetBacklog(int backlog) { this._backlog = backlog; }
         public void SetBufferSize(int size) { _bufferSize = size; }  
-        #endregion
 
         public void Start(int port,IPAddress ip = null) {
             if (_isRun) { return; }
@@ -90,23 +92,28 @@ namespace Csharp.Liqing.Net
             _sessions.Clear();
         }
 
-        private SocketAsyncEventArgs GetAcceptEventArgs() {
+        protected SocketAsyncEventArgs GetAcceptEventArgs()
+        {
             return _acceptPool.Pop();
         }
 
-        private SocketAsyncEventArgs GetReadWriteEventArgs() {
+        protected SocketAsyncEventArgs GetReadWriteEventArgs()
+        {
             return _readWritePool.Pop();
         }
 
-        private void PushBackAcceptEventArgs(SocketAsyncEventArgs args) {
+        protected void PushBackAcceptEventArgs(SocketAsyncEventArgs args)
+        {
             _acceptPool.Push(args);
         }
 
-        private void PushBackReadWriteArgs(SocketAsyncEventArgs args) {
+        protected void PushBackReadWriteArgs(SocketAsyncEventArgs args)
+        {
             _readWritePool.Push(args);
         }
 
-        private void ReleaseAcceptPool() {
+        protected void ReleaseAcceptPool()
+        {
             var list = _acceptPool.GetList();
             foreach (var item in list)
             {
@@ -116,7 +123,8 @@ namespace Csharp.Liqing.Net
             _acceptPool.Clear();
         }
 
-        private void ReleaseReadWritePool() {
+        protected void ReleaseReadWritePool()
+        {
             var list = _readWritePool.GetList();
             foreach (var item in list)
             {
@@ -125,13 +133,13 @@ namespace Csharp.Liqing.Net
             _readWritePool.Clear();
         }
 
-        private void InitReadWriteArgs(SocketAsyncEventArgs args)
+        protected void InitReadWriteArgs(SocketAsyncEventArgs args)
         {
             if (args.Buffer != null) { return; }
             args.SetBuffer(new byte[GetBufferSize()], 0, GetBufferSize());
         }
 
-        private void BeginAcceptSocket(SocketAsyncEventArgs args)
+        protected void BeginAcceptSocket(SocketAsyncEventArgs args)
         {
             if (args == null)
             {
@@ -145,8 +153,8 @@ namespace Csharp.Liqing.Net
             }
         }
 
-        private void AcceptSocket(Object sender, SocketAsyncEventArgs args) {
-
+        protected void AcceptSocket(Object sender, SocketAsyncEventArgs args)
+        {
             if (args.SocketError != SocketError.Success) {
                 args.AcceptSocket = null;
                 BeginAcceptSocket(args);
@@ -154,6 +162,15 @@ namespace Csharp.Liqing.Net
             }
 
             Socket socket = args.AcceptSocket;
+
+            if (OptionKeepAlive) {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, OptionKeepAlive);
+            }
+
+            if (OptionNoDelay) {
+                socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, OptionNoDelay);
+            }
+
             SocketAsyncEventArgs receive = GetReadWriteEventArgs();
             InitReadWriteArgs(receive);
             SocketAsyncEventArgs send = GetReadWriteEventArgs();
@@ -176,11 +193,13 @@ namespace Csharp.Liqing.Net
             BeginAcceptSocket(args);
         }
 
-        private void OnSessionConnected(TcpSessionBase session) {
+        protected void OnSessionConnected(TcpSessionBase session)
+        {
             OnConnected(session.GetGuid());
         }
 
-        private void OnSessionClose(TcpSessionBase session,SocketAsyncEventArgs recieveArgs,SocketAsyncEventArgs sendArgs) {
+        protected void OnSessionClose(TcpSessionBase session, SocketAsyncEventArgs recieveArgs, SocketAsyncEventArgs sendArgs)
+        {
             this.OnClose(session.GetGuid());
             PushBackReadWriteArgs(recieveArgs);
             PushBackReadWriteArgs(sendArgs);
@@ -188,11 +207,13 @@ namespace Csharp.Liqing.Net
             _sessionIds.Remove(session.GetGuid());
         }
 
-        private void OnSessionReceive(TcpSessionBase session, byte[] buffer, int offset, int length) {
+        protected void OnSessionReceive(TcpSessionBase session, byte[] buffer, int offset, int length)
+        {
             OnReceive(session.GetGuid(), buffer, offset, length);
         }
 
-        private void OnSessionSend(TcpSessionBase session, int length) {
+        protected void OnSessionSend(TcpSessionBase session, int length)
+        {
             OnSend(session.GetGuid(), length);
         }
 
@@ -209,5 +230,11 @@ namespace Csharp.Liqing.Net
             session.SendAsync(buffer, offset, length);
         }
 
+        public void CloseSession(Guid sessionId) {
+            TcpSessionBase session;
+            if (_sessionIds.TryGetValue(sessionId, out session)) {
+                session.ClearSession();
+            }
+        }
     }
 }
