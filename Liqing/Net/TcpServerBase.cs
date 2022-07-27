@@ -13,45 +13,62 @@ namespace Csharp.Liqing.Net
 
     public class TcpServerBase
     {
-        private Socket m_socket = null;
-        private int m_backlog = 100;
-        private int m_bufferSize = 1024;
-        private bool m_isRun = false;
+        private Socket _acceptSocket = null;
+        private int _backlog = 1000;
+        private int _bufferSize = 1024;
+        private bool _isRun = false;
 
-        private Pool<SocketAsyncEventArgs> acceptPool = new Pool<SocketAsyncEventArgs>();
-        private Pool<SocketAsyncEventArgs> readWritePool = new Pool<SocketAsyncEventArgs>();
+        private HashSet<TcpSessionBase> _sessions;
+        private Dictionary<Guid, TcpSessionBase> _sessionIds;
+        private Pool<SocketAsyncEventArgs> _acceptPool;
+        private Pool<SocketAsyncEventArgs> _readWritePool;
 
-        #region 委托处理,所有委托都为同步处理
-        public event EventHandler<SocketAsyncEventArgs> OnClientConnected = (a, b) => {
-            Console.WriteLine("{0} connected",b.AcceptSocket.GetHashCode());
+        public TcpServerBase() {
+            _acceptSocket = null;
+            _backlog = 1000;
+            _bufferSize = 1024;
+            _isRun = false;
+
+            _sessions = new HashSet<TcpSessionBase>();
+            _sessionIds = new Dictionary<Guid, TcpSessionBase>();
+            _acceptPool = new Pool<SocketAsyncEventArgs>();
+            _readWritePool = new Pool<SocketAsyncEventArgs>();
+        }
+        
+        public Action<Guid> OnConnected = (a) => {
+            Console.WriteLine("{0} connected",a);
         };
-        public event EventHandler<SocketAsyncEventArgs> OnReceiveSuccess = (a, b) => {
-            string str = System.Text.Encoding.UTF8.GetString(b.Buffer,0,b.BytesTransferred);
-            Console.WriteLine("{0} recieve: {1}", b.UserToken.GetHashCode(), str);
+
+        public Action<Guid> OnClose = (a) => {
+            Console.WriteLine("{0} close", a);
         };
-        public event EventHandler<SocketAsyncEventArgs> OnReceiveError = (a, b) => { };
-        public event EventHandler<SocketAsyncEventArgs> OnClientDisConnected = (a, b) => {
-            Console.WriteLine("{0} DisConnected", b.UserToken.GetHashCode());
-        }; 
-        #endregion
+
+        public Action<Guid, int> OnSend = (a,b) => {
+            Console.WriteLine("{0} send:{1} bytes",a,b);
+        };
+
+        public Action<Guid, byte[], int, int> OnReceive = (a, b, c, d) => {
+            string str = System.Text.Encoding.UTF8.GetString(b, c, d);
+            Console.WriteLine("{0} receive:{1}", a, str);
+        };
 
         #region Geter
-        public int GetBacklog() { return m_backlog; }
-        public int GetBufferSize() { return m_bufferSize; } 
+        public int GetBacklog() { return _backlog; }
+        public int GetBufferSize() { return _bufferSize; } 
         #endregion
 
         #region Seter
-        public void SetBacklog(int backlog) { this.m_backlog = backlog; }
-        public void SetBufferSize(int size) { m_bufferSize = size; }  
+        public void SetBacklog(int backlog) { this._backlog = backlog; }
+        public void SetBufferSize(int size) { _bufferSize = size; }  
         #endregion
 
         public void Start(int port,IPAddress ip = null) {
-            if (m_isRun) { return; }
-            m_isRun = true;
-            m_socket = new Socket(AddressFamily.Unspecified, SocketType.Stream, ProtocolType.Tcp);
+            if (_isRun) { return; }
+            _isRun = true;
+            _acceptSocket = new Socket(AddressFamily.Unspecified, SocketType.Stream, ProtocolType.Tcp);
             if (null == ip) { ip = IPAddress.Any; }
-            m_socket.Bind(new IPEndPoint(ip, port));
-            m_socket.Listen(GetBacklog());
+            _acceptSocket.Bind(new IPEndPoint(ip, port));
+            _acceptSocket.Listen(GetBacklog());
 
             for (int i = 0; i < GetBacklog(); i++)
             {
@@ -60,95 +77,58 @@ namespace Csharp.Liqing.Net
         }
 
         public void Close() {
-            if (!m_isRun) { return; }
-            m_isRun = false;
+            if (!_isRun) { return; }
+            _isRun = false;
 
-            if (null == m_socket) { return; }
-
+            if (null == _acceptSocket) { return; }
             ReleaseAcceptPool();
             ReleaseReadWritePool();
-
-            m_socket.Close();
+            _acceptSocket.Close();
+            _acceptSocket.Dispose();
+            _acceptSocket = null;
+            _sessionIds.Clear();
+            _sessions.Clear();
         }
 
         private SocketAsyncEventArgs GetAcceptEventArgs() {
-            return acceptPool.Pop();
+            return _acceptPool.Pop();
         }
 
         private SocketAsyncEventArgs GetReadWriteEventArgs() {
-            return readWritePool.Pop();
+            return _readWritePool.Pop();
         }
 
         private void PushBackAcceptEventArgs(SocketAsyncEventArgs args) {
-            acceptPool.Push(args);
+            _acceptPool.Push(args);
         }
 
         private void PushBackReadWriteArgs(SocketAsyncEventArgs args) {
-            readWritePool.Push(args);
+            _readWritePool.Push(args);
         }
 
         private void ReleaseAcceptPool() {
-            var list = acceptPool.GetList();
+            var list = _acceptPool.GetList();
             foreach (var item in list)
             {
                 item.Completed -= AcceptSocket;
                 item.Dispose();
             }
-            acceptPool.Clear();
+            _acceptPool.Clear();
         }
 
         private void ReleaseReadWritePool() {
-            var list = readWritePool.GetList();
+            var list = _readWritePool.GetList();
             foreach (var item in list)
             {
-                item.Completed -= CompletedIO;
-                CloseClientSocket(item);
                 item.Dispose();
             }
-            readWritePool.Clear();
-        }
-
-        private void ShutdownSocket(Socket socket, SocketAsyncEventArgs args) {
-            switch (args.LastOperation)
-            {
-                case SocketAsyncOperation.Send:
-                    socket.Shutdown(SocketShutdown.Send);
-                    break;
-                case SocketAsyncOperation.Receive:
-                    socket.Shutdown(SocketShutdown.Receive);
-                    break;
-            }
-        }
-
-        private void CloseClientSocket(SocketAsyncEventArgs args)
-        {
-            PushBackReadWriteArgs(args);
-            Socket socket = args.UserToken as Socket;
-            if (socket == null) { return; }
-            args.UserToken = null;
-            if (socket.Connected) { ShutdownSocket(socket, args); }
-            socket.Close();
-        }
-
-        private void CompletedIO(object sender, SocketAsyncEventArgs args)
-        {
-            switch (args.LastOperation)
-            {
-                case SocketAsyncOperation.Receive:
-                    ReceiveSocket(sender, args);
-                    break;
-                case SocketAsyncOperation.Send:
-                    break;
-                default:
-                    throw new NotSupportedException("Only Supported Send/Receive Operation!");
-            }
+            _readWritePool.Clear();
         }
 
         private void InitReadWriteArgs(SocketAsyncEventArgs args)
         {
             if (args.Buffer != null) { return; }
             args.SetBuffer(new byte[GetBufferSize()], 0, GetBufferSize());
-            args.Completed += CompletedIO;
         }
 
         private void BeginAcceptSocket(SocketAsyncEventArgs args)
@@ -159,49 +139,75 @@ namespace Csharp.Liqing.Net
                 args.Completed += AcceptSocket;
             }
 
-            if (false == m_socket.AcceptAsync(args))
+            if (false == _acceptSocket.AcceptAsync(args))
             {
                 AcceptSocket(this,args);
             }
         }
 
         private void AcceptSocket(Object sender, SocketAsyncEventArgs args) {
-            OnClientConnected.Invoke(sender, args);
+
+            if (args.SocketError != SocketError.Success) {
+                args.AcceptSocket = null;
+                BeginAcceptSocket(args);
+                return;
+            }
 
             Socket socket = args.AcceptSocket;
-            SocketAsyncEventArgs readArgs = GetReadWriteEventArgs();
-            InitReadWriteArgs(readArgs);
-            readArgs.UserToken = socket;
-            BeginReceiveSocket(readArgs);
+            SocketAsyncEventArgs receive = GetReadWriteEventArgs();
+            InitReadWriteArgs(receive);
+            SocketAsyncEventArgs send = GetReadWriteEventArgs();
+            InitReadWriteArgs(send);
+
+            lock (_sessions) {
+                TcpSessionBase session = new TcpSessionBase(socket, receive, send);
+                session.OnReceive = this.OnSessionReceive;
+                session.OnSend = this.OnSessionSend;
+                session.OnClose = this.OnSessionClose;
+
+                this.OnSessionConnected(session);
+
+                session.Run();
+                _sessions.Add(session);
+                _sessionIds.Add(session.GetGuid(), session);
+            }
 
             args.AcceptSocket = null;
             BeginAcceptSocket(args);
         }
 
-        private void BeginReceiveSocket(SocketAsyncEventArgs args)
+        private void OnSessionConnected(TcpSessionBase session) {
+            OnConnected(session.GetGuid());
+        }
+
+        private void OnSessionClose(TcpSessionBase session,SocketAsyncEventArgs recieveArgs,SocketAsyncEventArgs sendArgs) {
+            this.OnClose(session.GetGuid());
+            PushBackReadWriteArgs(recieveArgs);
+            PushBackReadWriteArgs(sendArgs);
+            _sessions.Remove(session);
+            _sessionIds.Remove(session.GetGuid());
+        }
+
+        private void OnSessionReceive(TcpSessionBase session, byte[] buffer, int offset, int length) {
+            OnReceive(session.GetGuid(), buffer, offset, length);
+        }
+
+        private void OnSessionSend(TcpSessionBase session, int length) {
+            OnSend(session.GetGuid(), length);
+        }
+
+        public void SendAsync(Guid sessionId, byte[] buffer) {
+            this.SendAsync(sessionId, buffer, 0, buffer.Length);  
+        }
+
+        public void SendAsync(Guid sessionId, byte[] buffer, int offset, int length)
         {
-            Socket socket = args.UserToken as Socket;
-            if (false == socket.ReceiveAsync(args))
-            {
-                ReceiveSocket(this,args);
-            }
-        }
-
-        private void ReceiveSocket(Object sender,SocketAsyncEventArgs args) {
-            if (args.SocketError != SocketError.Success) {
-                OnReceiveError.Invoke(sender, args);
-                CloseClientSocket(args);
+            TcpSessionBase session;
+            if (false == _sessionIds.TryGetValue(sessionId, out session)) {
                 return;
             }
-
-            if (args.BytesTransferred <= 0) {
-                OnClientDisConnected.Invoke(sender, args);
-                CloseClientSocket(args);
-                return;
-            }
-
-            OnReceiveSuccess.Invoke(sender, args);
-            BeginReceiveSocket(args);
+            session.SendAsync(buffer, offset, length);
         }
+
     }
 }
