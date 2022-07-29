@@ -1,0 +1,6 @@
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.exe.config
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.exe
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.pdb
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.csprojResolveAssemblyReference.cache
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.exe
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.pdb
