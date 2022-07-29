@@ -1,0 +1,13 @@
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.exe.config
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.exe
+D:\VS_PROJECT\Csharp\Game\bin\Debug\Game.pdb
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.csprojResolveAssemblyReference.cache
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.exe
+D:\VS_PROJECT\Csharp\Game\obj\Debug\Game.pdb
+D:\Program_Project\c#\Csharp-main\Game\obj\Debug\Game.csproj.AssemblyReference.cache
+D:\Program_Project\c#\Csharp-main\Game\obj\Debug\Game.csproj.CoreCompileInputs.cache
+D:\Program_Project\c#\Csharp-main\Game\obj\Debug\Game.exe
+D:\Program_Project\c#\Csharp-main\Game\obj\Debug\Game.pdb
+D:\Program_Project\c#\Csharp-main\Game\bin\Debug\Game.exe.config
+D:\Program_Project\c#\Csharp-main\Game\bin\Debug\Game.exe
+D:\Program_Project\c#\Csharp-main\Game\bin\Debug\Game.pdb
