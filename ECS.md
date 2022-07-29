@@ -39,13 +39,13 @@
 ---
 - Component
 
-只包含*Entity* ，数据值和各种状态值，不拥有任何函数功能
+只包含*Entity* ，数据值和各种状态值，不拥有任何函数功能，*Component* 不能中不能包含任何 *Component* ,每个*Entity* 对某个种类的*Component* 只能拥有一个,不允许重复
 
 - System
 
-将*System* 分为两种: DataSystem,ActionSystem
+将*System* 分为两个部分: DataSystem,ActionSystem
 
-DataSystem:存储*Component* 并建立统一的Get Set方法，所有*Component* 的相关操作，都经过对应的DataSystem
+DataSystem:存储*Component* 并建立*Component* 统一的Get Set方法，所有*Component* 的数据操作，都经过对应的DataSystem
 
 ActionSystem:与*Component* 逻辑相关的*System* ，专门负责处理逻辑事务
 
