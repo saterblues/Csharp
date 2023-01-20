@@ -39,7 +39,7 @@
 ---
 - Component
 
-只包含*Entity* ，数据值和各种状态值，不拥有任何函数功能，*Component* 不能中不能包含任何 *Component* ,每个*Entity* 对某个种类的*Component* 只能拥有一个,不允许重复
+只包含*Entity* ，数据值和各种状态值，不拥有任何函数功能，*Component* 中不能包含任何 *Component* ,每个*Entity* 对某个种类的*Component* 只能拥有一个,不允许重复
 
 - System
 
